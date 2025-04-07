@@ -132,7 +132,7 @@ cdf_chart = (
     alt.Chart(df)
     .mark_line(point=True, color='#1f77b4')
     .encode(
-        x=alt.X('Show', sort='-y', title='Acara TV'),
+        x=alt.X('Show', sort='y', title='Acara TV'),
         y=alt.Y('CDF_numeric', title='CDF'),
         tooltip=['Show','CDF']
     )
