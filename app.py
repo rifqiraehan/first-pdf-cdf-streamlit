@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import altair as alt
+import re
 from cryptography.fernet import Fernet
 
 st.set_page_config(
@@ -23,15 +24,26 @@ json_data = json.loads(decrypted_data.decode())
 students = pd.DataFrame(json_data['students'])
 shows   = pd.DataFrame(json_data['shows'])
 students = students.merge(shows, left_on='most_like_show', right_on='id', suffixes=('','_show'))
+custom_order = shows.sort_values('id')['name'].str.replace(r'^\d+\s*', '', regex=True).tolist()
 
-def get_freq_df(df):
+def get_freq_df(df, shows_df):
     freq = df['name_show'].value_counts().reset_index()
-    freq.columns = ['Show','Frequency']
+    freq.columns = ['Show', 'Frequency']
+
+    # Gabungkan dengan data shows biar dapet id-nya buat sorting
+    freq = freq.merge(shows_df[['name', 'id']], left_on='Show', right_on='name')
+
+    # Urut berdasarkan id agar sesuai urutan JSON
+    freq = freq.sort_values('id').drop(columns=['name'])
+
+    # Hapus angka hanya untuk tampilan
+    freq['Show'] = freq['Show'].str.replace(r'^\d+\s*', '', regex=True)
+
     return freq
 
-male_freq    = get_freq_df(students[students.gender=='male'])
-female_freq  = get_freq_df(students[students.gender=='female'])
-overall_freq = get_freq_df(students)
+male_freq    = get_freq_df(students[students.gender=='male'], shows)
+female_freq  = get_freq_df(students[students.gender=='female'], shows)
+overall_freq = get_freq_df(students, shows)
 
 male_total    = len(students[students.gender=='male'])
 female_total  = len(students[students.gender=='female'])
@@ -92,6 +104,8 @@ df_survei = df_survei.rename(columns={
     'name_show': 'Acara TV'
 })
 
+df_survei['Acara TV'] = df_survei['Acara TV'].apply(lambda x: re.sub(r'^\d+\s+', '', x))
+
 st.header("Data Survei")
 st.dataframe(df_survei.set_index('NRP'))
 
@@ -110,17 +124,35 @@ st.subheader("Grafik Frekuensi")
 freq_chart = df[['Show','Frequency']].set_index('Show')
 
 st.markdown("**Bar Chart**")
-st.bar_chart(freq_chart)
+bar_freq_chart = (
+    alt.Chart(df)
+    .mark_bar(color="#ff7f0e")
+    .encode(
+        x=alt.X('Show', sort=custom_order, title='Acara TV'),
+        y=alt.Y('Frequency', title='Jumlah'),
+        tooltip=['Show', 'Frequency']
+    )
+)
+st.altair_chart(bar_freq_chart, use_container_width=True)
 
 st.markdown("**Line Chart**")
-st.line_chart(freq_chart)
+line_freq_chart = (
+    alt.Chart(df)
+    .mark_line(point=True, color="#2ca02c")
+    .encode(
+        x=alt.X('Show', sort=custom_order, title='Acara TV'),
+        y=alt.Y('Frequency', title='Jumlah'),
+        tooltip=['Show', 'Frequency']
+    )
+)
+st.altair_chart(line_freq_chart, use_container_width=True)
 
 st.subheader("Grafik PDF (Probability Density Function)")
 pdf_chart = (
     alt.Chart(df)
     .mark_line(point=True, color='#d62728')
     .encode(
-        x=alt.X('Show', sort='-y', title='Acara TV'),
+        x=alt.X('Show', title='Acara TV', sort=custom_order),
         y=alt.Y('PDF_numeric', title='Probabilitas'),
         tooltip=['Show','PDF']
     )
@@ -132,11 +164,12 @@ cdf_chart = (
     alt.Chart(df)
     .mark_line(point=True, color='#1f77b4')
     .encode(
-        x=alt.X('Show', sort='y', title='Acara TV'),
+        x=alt.X('Show', title='Acara TV', sort=custom_order),
         y=alt.Y('CDF_numeric', title='CDF'),
         tooltip=['Show','CDF']
     )
 )
+
 st.altair_chart(cdf_chart, use_container_width=True)
 
 st.header("Persentase (%)")
